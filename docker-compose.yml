@@ -161,12 +161,10 @@ services:
     networks:
       - litellm-network
 
-  # Open WebUI - ChatGPT-like Interface (Custom Fork with Agents UI)
+  # Open WebUI - ChatGPT-like Interface
   open-webui:
-    build:
-      context: ./open-webui-fork
-      dockerfile: Dockerfile.custom
-    container_name: open-webui-custom
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
     restart: unless-stopped
     depends_on:
       auth-middleware:
