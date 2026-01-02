@@ -79,12 +79,114 @@ def get_virtual_key(group: str) -> str:
     return GROUP_KEYS[group]
 
 
+@app.get("/api/agents")
+async def get_agents(request: Request):
+    """
+    API endpoint para UI customizada buscar agents
+    Retorna apenas agents (não modelos tradicionais)
+    """
+    print(f"[API] Fetching agents for custom UI")
+
+    # Identificar usuário
+    user = get_user_from_request(request)
+
+    if not user or not user.get("email"):
+        return {"success": False, "agents": [], "error": "User not authenticated"}
+
+    user_email = user["email"]
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "http://mcp-adapter:8001/agents",
+                params={"user_email": user_email}
+            )
+
+            if response.status_code == 200:
+                agents = response.json()
+                print(f"[API] Fetched {len(agents)} agents for {user_email}")
+
+                # Transform to UI format
+                agents_ui = [
+                    {
+                        "id": agent["id"],
+                        "name": agent["name"],
+                        "description": agent.get("description", ""),
+                        "llm_model": agent["llm_model"],
+                        "llm_provider": agent["llm_provider"],
+                        "prompt_count": len(agent.get("prompts", []))
+                    }
+                    for agent in agents
+                ]
+
+                return {"success": True, "agents": agents_ui}
+            else:
+                return {"success": False, "agents": [], "error": "Failed to fetch agents"}
+
+    except Exception as e:
+        print(f"[API] Error fetching agents: {e}")
+        return {"success": False, "agents": [], "error": str(e)}
+
+
+@app.get("/api/agents/{agent_id}")
+async def get_agent_detail(agent_id: str, request: Request):
+    """
+    API endpoint para buscar detalhes de um agent específico
+    Retorna agent com todos os prompts
+    """
+    print(f"[API] Fetching agent details: {agent_id}")
+
+    # Identificar usuário
+    user = get_user_from_request(request)
+
+    if not user or not user.get("email"):
+        return {"success": False, "agent": None, "error": "User not authenticated"}
+
+    user_email = user["email"]
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "http://mcp-adapter:8001/agents",
+                params={"user_email": user_email}
+            )
+
+            if response.status_code == 200:
+                agents = response.json()
+
+                # Find specific agent
+                agent = next((a for a in agents if a["id"] == agent_id), None)
+
+                if not agent:
+                    return {"success": False, "agent": None, "error": "Agent not found"}
+
+                return {
+                    "success": True,
+                    "agent": {
+                        "id": agent["id"],
+                        "name": agent["name"],
+                        "description": agent.get("description", ""),
+                        "llm_model": agent["llm_model"],
+                        "llm_provider": agent["llm_provider"],
+                        "prompts": agent.get("prompts", [])
+                    }
+                }
+            else:
+                return {"success": False, "agent": None, "error": "Failed to fetch agent"}
+
+    except Exception as e:
+        print(f"[API] Error fetching agent details: {e}")
+        return {"success": False, "agent": None, "error": str(e)}
+
+
 @app.get("/v1/models")
 async def get_models(request: Request):
     """
-    Retorna agents do MCP Adapter + modelos tradicionais do LiteLLM
+    Retorna APENAS modelos tradicionais do LiteLLM (NÃO agents)
+
+    Agents têm UI dedicada (sidebar + detail page) e são buscados via /api/agents
     """
-    print(f"[MODELS] Fetching agents and models")
+    print(f"[MODELS] Fetching traditional models (no agents)")
 
     # 1. Identificar usuário
     user = get_user_from_request(request)
@@ -92,35 +194,7 @@ async def get_models(request: Request):
 
     all_models = []
 
-    # 2. Buscar agents do MCP Adapter (se houver usuário)
-    if user and user.get("email"):
-        user_email = user["email"]
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    "http://mcp-adapter:8001/agents",
-                    params={"user_email": user_email}
-                )
-
-                if response.status_code == 200:
-                    agents = response.json()
-                    print(f"[MODELS] Fetched {len(agents)} agents for {user_email}")
-
-                    # Adicionar agents
-                    for agent in agents:
-                        all_models.append({
-                            "id": agent["id"],
-                            "object": "model",
-                            "created": 1234567890,
-                            "owned_by": "ai-platform",
-                            "name": agent["name"]
-                        })
-
-        except Exception as e:
-            print(f"[MODELS] Error fetching agents: {e}")
-
-    # 3. Buscar modelos tradicionais do LiteLLM
+    # 2. Buscar APENAS modelos tradicionais do LiteLLM (sem agents)
     try:
         virtual_key = get_virtual_key(group)
 
@@ -133,14 +207,15 @@ async def get_models(request: Request):
             if response.status_code == 200:
                 litellm_response = response.json()
                 litellm_models = litellm_response.get("data", [])
-                print(f"[MODELS] Fetched {len(litellm_models)} models from LiteLLM")
+                print(f"[MODELS] Fetched {len(litellm_models)} traditional models from LiteLLM")
 
-                # Adicionar modelos tradicionais
+                # Adicionar apenas modelos tradicionais
                 all_models.extend(litellm_models)
 
     except Exception as e:
         print(f"[MODELS] Error fetching LiteLLM models: {e}")
 
+    # NÃO incluir agents aqui - eles são buscados via /api/agents
     return {"data": all_models, "object": "list"}
 
 
