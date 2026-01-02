@@ -1,9 +1,9 @@
-# Exemplos de API - LiteLLM + MCP Adapter + Agents UI (v2)
+# Exemplos de API - LiteLLM + MCP Adapter (v2)
 
-Documentação completa com exemplos práticos de uso da plataforma LiteLLM com MCP Adapter, incluindo a **nova UI customizada de agents**.
+Documentação completa com exemplos práticos de uso da plataforma LiteLLM com MCP Adapter, incluindo os **novos endpoints de agents v2**.
 
 **Data**: 2026-01-02
-**Versão**: 2.0 (com Agents UI)
+**Versão**: 2.0
 **Branch**: `feat/view-customization-agents`
 
 ---
@@ -11,119 +11,85 @@ Documentação completa com exemplos práticos de uso da plataforma LiteLLM com 
 ## Índice
 
 1. [Visão Geral](#1-visão-geral)
-2. [Novidades v2 - Agents UI](#2-novidades-v2---agents-ui)
+2. [Novidades v2](#2-novidades-v2)
 3. [Usuários e Permissões](#3-usuários-e-permissões)
-4. [Endpoints da UI de Agents](#4-endpoints-da-ui-de-agents)
+4. [Endpoints de Agents (Novos)](#4-endpoints-de-agents-novos)
 5. [Endpoints de Modelos (Modificados)](#5-endpoints-de-modelos-modificados)
-6. [Testando Agents com MCP](#6-testando-agents-com-mcp)
-7. [Testando Modelos Tradicionais](#7-testando-modelos-tradicionais)
-8. [Fluxo Completo de Uso](#8-fluxo-completo-de-uso)
-9. [Validação dos Exemplos](#9-validação-dos-exemplos)
+6. [Chat com Agents (MCP)](#6-chat-com-agents-mcp)
+7. [Chat com Modelos Tradicionais](#7-chat-com-modelos-tradicionais)
+8. [Validação dos Exemplos](#8-validação-dos-exemplos)
+9. [Referência Rápida](#9-referência-rápida)
 
 ---
 
 ## 1. Visão Geral
 
-### Arquitetura Atualizada (v2)
+### Arquitetura
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Open WebUI (Frontend)                    │
-│  ┌──────────────┐  ┌─────────────────────────────────────┐ │
-│  │   Sidebar    │  │         Main Content                │ │
-│  │ ┌──────────┐ │  │  ┌────────────────────────────────┐ │ │
-│  │ │ 📊 Agents│ │  │  │  Agent Detail Page             │ │ │
-│  │ │ Agent 1  │─┼──┼─►│  ┌─────────┐  ┌─────────┐      │ │ │
-│  │ │ Agent 2  │ │  │  │  │ Card 1  │  │ Card 2  │      │ │ │
-│  │ │          │ │  │  │  │ Prompt  │  │ Prompt  │      │ │ │
-│  │ └──────────┘ │  │  │  └─────────┘  └─────────┘      │ │ │
-│  │              │  │  │  ┌─────────┐  ┌─────────┐      │ │ │
-│  │ 💬 Chats     │  │  │  │ Card 3  │  │ Card 4  │      │ │ │
-│  │ Chat 1       │  │  │  │ Prompt  │  │ Prompt  │      │ │ │
-│  │ Chat 2       │  │  │  └─────────┘  └─────────┘      │ │ │
-│  └──────────────┘  │  └────────────────────────────────┘ │ │
-│                    └─────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-              ┌─────────────────────────────┐
-              │   Auth Middleware           │
-              │  ┌─────────────────────┐    │
-              │  │ GET /api/agents     │◄── Nova API (v2)
-              │  │ GET /api/agents/{id}│◄── Nova API (v2)
-              │  │ GET /v1/models      │◄── Modificado (v2)
-              │  │ POST /v1/chat/...   │    │
-              │  └─────────────────────┘    │
-              └─────────────────────────────┘
-                           │
-              ┌────────────┴────────────┐
-              │                         │
-              ▼                         ▼
-   ┌──────────────────┐    ┌──────────────────┐
-   │  MCP Adapter     │    │    LiteLLM       │
-   │  GET /agents     │    │  /v1/models      │
-   │  POST /chat      │    │  /v1/chat/...    │
-   └──────────────────┘    └──────────────────┘
-              │
-              ▼
-   ┌──────────────────┐
-   │   MCP Server     │
-   │   (Analytics,    │
-   │   Monitoring,    │
-   │   Database)      │
-   └──────────────────┘
+┌─────────────────────────────┐
+│      Auth Middleware        │
+│  ┌───────────────────────┐  │
+│  │ GET /api/agents       │◄─── Nova API (v2)
+│  │ GET /api/agents/{id}  │◄─── Nova API (v2)
+│  │ GET /v1/models        │◄─── Modificado (v2)
+│  │ POST /v1/chat/...     │    │
+│  └───────────────────────┘    │
+└─────────────────────────────┘
+            │
+    ┌───────┴────────┐
+    │                │
+    ▼                ▼
+┌──────────┐    ┌──────────┐
+│   MCP    │    │ LiteLLM  │
+│ Adapter  │    │          │
+└──────────┘    └──────────┘
+    │
+    ▼
+┌──────────┐
+│   MCP    │
+│  Server  │
+└──────────┘
 ```
 
 ### Componentes
 
 | Componente | Porta | Descrição |
 |------------|-------|-----------|
-| **Auth Middleware** | 8000 | Proxy com permissões + Novos endpoints de Agents UI |
+| **Auth Middleware** | 8000 | Proxy com permissões + Novos endpoints de agents |
 | **MCP Adapter** | 8001 | Orquestração de agents e MCPs |
 | **LiteLLM** | 4000 | Proxy para OpenAI/Anthropic |
-| **Open WebUI** | 8888 | Interface web (com UI customizada de agents) |
-| **MCP Server** | N/A | Ferramentas de analytics, monitoring, database |
+| **MCP Server** | N/A | Ferramentas (analytics, monitoring, database) |
 | **PostgreSQL** | 5432 | Banco de dados (agents, prompts, permissões) |
 
 ---
 
-## 2. Novidades v2 - Agents UI
+## 2. Novidades v2
 
-### O que mudou na v2?
+### Mudanças da API
 
-#### ✅ Agents no Menu Lateral (estilo ChatGPT GPTs)
+| Aspecto | v1 (Antiga) | v2 (Nova) |
+|---------|-------------|-----------|
+| **Agents em /v1/models** | ✅ Sim | ❌ Não |
+| **Endpoint para listar agents** | /v1/models | /api/agents |
+| **Endpoint para detalhes** | N/A | /api/agents/{id} |
+| **Prompts de exemplo** | ❌ Não retornados | ✅ Retornados |
 
-**ANTES (v1)**:
-- Agents apareciam no dropdown de modelos
-- Sem prompts de exemplo visíveis
-- Misturados com modelos tradicionais
-
-**DEPOIS (v2)**:
-- Agents aparecem em menu lateral dedicado
-- Cada agent tem página de detalhes
-- 4 cards de prompts clicáveis por agent
-- Separação clara: sidebar para agents, dropdown para modelos
-
-#### ✅ Novos Endpoints API
+### Novos Endpoints
 
 ```bash
-# NOVO: Listar agents (para UI)
+# v2: Listar agents (com contagem de prompts)
 GET /api/agents
+→ Retorna: agents com informações resumidas
 
-# NOVO: Detalhes do agent (para UI)
+# v2: Detalhes do agent (com prompts completos)
 GET /api/agents/{agent_id}
+→ Retorna: agent com array de prompts
 
-# MODIFICADO: Apenas modelos tradicionais (sem agents)
+# v2: Modelos tradicionais (SEM agents)
 GET /v1/models
+→ Retorna: apenas gpt-4, claude-sonnet, gpt-3.5-turbo
 ```
-
-#### ✅ Experiência do Usuário
-
-1. **Sidebar mostra agents** disponíveis
-2. **Click no agent** → Abre página de detalhes
-3. **Página mostra 4 cards** com prompts de exemplo
-4. **Click no card** → Abre chat novo com prompt pré-preenchido
-5. **Enviar mensagem** → MCP Adapter processa com dados reais
 
 ---
 
@@ -137,7 +103,7 @@ GET /v1/models
 **Permissões**:
 - ✅ Vê 2 agents: "Assistente Genérico" + "Agent Diagnóstico de Vendas"
 - ✅ Vê modelos premium: `gpt-4` e `claude-sonnet`
-- ✅ Acesso completo ao sistema
+- ✅ Acesso a 8 prompts de exemplo (4 por agent)
 
 ### Usuário GERAL (geral@company.com)
 
@@ -147,17 +113,18 @@ GET /v1/models
 **Permissões**:
 - ✅ Vê 1 agent: "Assistente Genérico" (apenas)
 - ✅ Vê modelo básico: `gpt-3.5-turbo`
+- ✅ Acesso a 4 prompts de exemplo
 - ❌ NÃO vê: "Agent Diagnóstico de Vendas"
 - ❌ NÃO vê: `gpt-4` ou `claude-sonnet`
 
 ---
 
-## 4. Endpoints da UI de Agents
+## 4. Endpoints de Agents (Novos)
 
-### 4.1. Listar Agents (Sidebar)
+### 4.1. Listar Agents
 
 **Endpoint**: `GET /api/agents`
-**Propósito**: Retorna agents disponíveis para o usuário (usado pela sidebar)
+**Propósito**: Retorna agents disponíveis para o usuário com contagem de prompts
 
 #### Exemplo: Usuário VENDAS
 
@@ -197,7 +164,6 @@ curl -H "X-OpenWebUI-User-Email: emingues@gmail.com" \
 
 ```bash
 curl -H "X-OpenWebUI-User-Email: geral@company.com" \
-     -H "X-OpenWebUI-User-Id: user-2" \
      http://localhost:8000/api/agents | jq
 ```
 
@@ -222,10 +188,10 @@ curl -H "X-OpenWebUI-User-Email: geral@company.com" \
 
 ---
 
-### 4.2. Detalhes do Agent (Página de Detalhes)
+### 4.2. Detalhes do Agent (com Prompts)
 
 **Endpoint**: `GET /api/agents/{agent_id}`
-**Propósito**: Retorna detalhes do agent com todos os prompts (para página de detalhes)
+**Propósito**: Retorna detalhes do agent incluindo todos os prompts de exemplo
 
 #### Exemplo: Agent Diagnóstico de Vendas
 
@@ -282,11 +248,11 @@ curl -H "X-OpenWebUI-User-Email: geral@company.com" \
 }
 ```
 
-**Status**: 200 OK (mas agent não está na lista do usuário GERAL)
+**Status HTTP**: 200 OK (mas agent não existe na lista do usuário)
 
 ---
 
-### 4.3. Buscar Apenas Títulos de Prompts
+### 4.3. Extrair Apenas Títulos de Prompts
 
 ```bash
 curl -s -H "X-OpenWebUI-User-Email: emingues@gmail.com" \
@@ -310,7 +276,7 @@ curl -s -H "X-OpenWebUI-User-Email: emingues@gmail.com" \
 
 **Endpoint**: `GET /v1/models`
 **Modificação v2**: Retorna APENAS modelos tradicionais (gpt-4, claude-sonnet, gpt-3.5-turbo)
-**Agents**: NÃO aparecem aqui (são buscados via `/api/agents`)
+**Agents**: NÃO aparecem mais neste endpoint
 
 #### Exemplo: Usuário VENDAS
 
@@ -339,60 +305,22 @@ curl -H "X-OpenWebUI-User-Email: geral@company.com" \
 "gpt-3.5-turbo"
 ```
 
-**Observação**: Apenas modelo básico.
-
 ---
 
 ### 5.2. Comparação v1 vs v2
 
-| Aspecto | v1 (Antiga) | v2 (Nova) |
-|---------|-------------|-----------|
-| **Agents no /v1/models** | ✅ Sim | ❌ Não |
-| **Dropdown de modelos** | Agents + Modelos | Apenas modelos |
-| **Como ver agents** | Dropdown | Sidebar dedicada |
-| **Prompts de exemplo** | ❌ Não visíveis | ✅ Cards clicáveis |
-| **Endpoint para agents** | /v1/models | /api/agents |
+| Endpoint | v1 (Antes) | v2 (Agora) |
+|----------|------------|-----------|
+| **GET /v1/models** | Retorna agents + modelos | Retorna APENAS modelos |
+| **Agents em /v1/models** | ✅ Sim | ❌ Não |
+| **Como listar agents** | GET /v1/models | GET /api/agents |
+| **Como ver prompts** | ❌ Não disponível | GET /api/agents/{id} |
 
 ---
 
-## 6. Testando Agents com MCP
+## 6. Chat com Agents (MCP)
 
-### 6.1. Fluxo Completo (UI)
-
-```
-1. Usuário acessa Open WebUI (http://localhost:8888)
-   ↓
-2. Sidebar mostra "AI Agents":
-   - Assistente Genérico
-   - Agent Diagnóstico de Vendas (se VENDAS)
-   ↓
-3. Click em "Agent Diagnóstico de Vendas"
-   ↓
-4. Página mostra 4 cards de prompts:
-   ┌─────────────────────┐  ┌─────────────────────┐
-   │ 📊 Análise de       │  │ 📈 Comparação       │
-   │    conversão        │  │    mensal           │
-   │                     │  │                     │
-   │ Qual foi a taxa...  │  │ Compare a perf...   │
-   └─────────────────────┘  └─────────────────────┘
-   ┌─────────────────────┐  ┌─────────────────────┐
-   │ 🔍 Análise de       │  │ ⚡ Performance      │
-   │    funil            │  │    técnica          │
-   │                     │  │                     │
-   │ Identifique os...   │  │ Mostre as APIs...   │
-   └─────────────────────┘  └─────────────────────┘
-   ↓
-5. Click no card "Análise de conversão"
-   ↓
-6. Abre chat novo com modelo "diagnostico-vendas"
-   e prompt pré-preenchido
-   ↓
-7. Usuário envia mensagem
-   ↓
-8. MCP Adapter processa (ver fluxo abaixo)
-```
-
-### 6.2. Testar Agent via API (Direto)
+### 6.1. Usando Prompt de Exemplo
 
 **Endpoint**: `POST /v1/chat/completions`
 **Modelo**: `diagnostico-vendas`
@@ -403,7 +331,6 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "X-OpenWebUI-User-Email: emingues@gmail.com" \
   -H "X-OpenWebUI-User-Id: user-vendas" \
-  -H "X-OpenWebUI-User-Role: admin" \
   -d '{
     "model": "diagnostico-vendas",
     "messages": [
@@ -416,7 +343,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
   }' | jq
 ```
 
-#### Fluxo Interno (MCP)
+### 6.2. Fluxo Interno (MCP)
 
 ```
 1️⃣ Auth Middleware
@@ -427,7 +354,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    ├─ Valida permissão ✅
    ├─ Identifica keywords: "conversão", "tráfego"
    ├─ Chama MCP: analytics_get_conversion
-   └─ Recebe 847 chars de dados
+   └─ Recebe 847 chars de dados reais
 
 3️⃣ Contexto Enriquecido
    ├─ Mensagem original + Dados do MCP
@@ -437,7 +364,8 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
    └─ Análise inteligente com dados reais
 ```
 
-**Resultado Esperado**:
+### 6.3. Resultado Esperado
+
 ```json
 {
   "id": "chatcmpl-xyz789",
@@ -450,13 +378,18 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
         "content": "📊 **Análise da Taxa de Conversão - Últimos 30 dias**\n\n**Taxa de Conversão Geral:** 3.42% (+14.77%)\n\n**Performance por Fonte:**\n1. Campanhas Pagas: 5.8% 🥇\n2. Email Marketing: 4.2% 🥈\n3. Orgânico: 2.5% 🥉\n4. Redes Sociais: 1.9%\n\n**Recomendações:**\n- Investir mais em campanhas pagas (melhor ROI)\n- Otimizar funil orgânico\n- Testar novos formatos em redes sociais"
       }
     }
-  ]
+  ],
+  "usage": {
+    "prompt_tokens": 450,
+    "completion_tokens": 380,
+    "total_tokens": 830
+  }
 }
 ```
 
 ---
 
-## 7. Testando Modelos Tradicionais
+## 7. Chat com Modelos Tradicionais
 
 ### 7.1. GPT-4 (Direto, sem MCP)
 
@@ -490,110 +423,23 @@ Auth Middleware → LiteLLM → OpenAI GPT-4
 
 | Aspecto | GPT-4 Direto | Agent Diagnóstico (MCP) |
 |---------|--------------|-------------------------|
+| **Endpoint** | POST /v1/chat/completions | POST /v1/chat/completions |
+| **Model ID** | "gpt-4" | "diagnostico-vendas" |
 | **Dados** | Conhecimento geral | Dados reais do analytics |
 | **Precisão** | Genérica | Específica da empresa |
 | **Contexto** | Limitado | Enriquecido com MCPs |
 | **Latência** | ~2s | ~3-4s (inclui MCPs) |
 | **Custo** | Menor | Maior (MCP + LLM) |
 | **Valor** | Explicações | Insights acionáveis |
-| **UI** | Dropdown de modelos | Sidebar + Cards de prompts |
 
 ---
 
-## 8. Fluxo Completo de Uso
-
-### 8.1. Cenário: Usuário VENDAS analisa conversão
-
-```bash
-# 1. Login no Open WebUI
-# URL: http://localhost:8888
-# User: emingues@gmail.com
-
-# 2. Sidebar carrega agents
-GET /api/agents
-→ Retorna: 2 agents (Genérico + Diagnóstico)
-
-# 3. Click em "Agent Diagnóstico de Vendas"
-# Navegação: /agents/diagnostico-vendas
-
-# 4. Página de detalhes carrega
-GET /api/agents/diagnostico-vendas
-→ Retorna: Agent com 4 prompts
-
-# 5. UI renderiza 4 cards clicáveis
-# - Card 1: "Análise de conversão"
-# - Card 2: "Comparação mensal"
-# - Card 3: "Análise de funil"
-# - Card 4: "Performance técnica"
-
-# 6. Usuário clica no Card 1
-# Click handler:
-POST /api/agents/diagnostico-vendas/chat
-{
-  "prompt": "Qual foi a taxa de conversão nos últimos 30 dias?..."
-}
-
-# 7. Navegação para novo chat
-# URL: /c/new?model=diagnostico-vendas&message=Qual+foi+a+taxa...
-
-# 8. Chat envia mensagem
-POST /v1/chat/completions
-{
-  "model": "diagnostico-vendas",
-  "messages": [{"role": "user", "content": "Qual foi a taxa..."}]
-}
-
-# 9. Auth Middleware roteia para MCP Adapter
-POST http://mcp-adapter:8001/agents/diagnostico-vendas/chat
-
-# 10. MCP Adapter processa
-# - Valida permissão ✅
-# - Detecta keywords: "conversão", "tráfego"
-# - Chama MCP: analytics_get_conversion
-# - Enriquece contexto
-# - Chama LiteLLM (claude-sonnet)
-
-# 11. Resposta streaming para usuário
-# Análise completa com dados reais
-```
-
----
-
-### 8.2. Cenário: Usuário GERAL tenta acessar
-
-```bash
-# 1. Login no Open WebUI
-# User: geral@company.com
-
-# 2. Sidebar carrega agents
-GET /api/agents
-→ Retorna: 1 agent (apenas Genérico)
-
-# 3. NÃO vê "Agent Diagnóstico de Vendas"
-# Sidebar mostra apenas:
-# - Assistente Genérico
-
-# 4. Dropdown de modelos mostra
-GET /v1/models
-→ Retorna: apenas "gpt-3.5-turbo"
-
-# 5. Tentativa de acessar via URL direta
-GET /api/agents/diagnostico-vendas
-→ Resultado: { "success": false, "error": "Agent not found" }
-
-# 6. Tentativa de chat direto
-POST /v1/chat/completions { "model": "diagnostico-vendas", ... }
-→ MCP Adapter retorna: HTTP 403 "Access denied"
-```
-
----
-
-## 9. Validação dos Exemplos
+## 8. Validação dos Exemplos
 
 ### ✅ Testes Executados (v2)
 
 ```bash
-# Teste 1: Listar agents via nova API (VENDAS)
+# Teste 1: Listar agents (VENDAS)
 curl -s -H "X-OpenWebUI-User-Email: emingues@gmail.com" \
      http://localhost:8000/api/agents | jq '.agents | length'
 # Resultado: 2
@@ -611,7 +457,7 @@ curl -s -H "X-OpenWebUI-User-Email: emingues@gmail.com" \
      http://localhost:8000/v1/models | \
   jq '.data[] | select(.id | contains("agent") or contains("diagnostico"))'
 # Resultado: (vazio)
-# Status: ✅ PASSOU - Agents não aparecem em /v1/models
+# Status: ✅ PASSOU
 
 # Teste 4: Apenas modelos tradicionais em /v1/models
 curl -s -H "X-OpenWebUI-User-Email: emingues@gmail.com" \
@@ -625,7 +471,7 @@ curl -s -H "X-OpenWebUI-User-Email: geral@company.com" \
 # Resultado: 1
 # Status: ✅ PASSOU
 
-# Teste 6: Usuário GERAL não vê diagnostico-vendas
+# Teste 6: Acesso negado para GERAL
 curl -s -H "X-OpenWebUI-User-Email: geral@company.com" \
      http://localhost:8000/api/agents | \
   jq '.agents[] | select(.id == "diagnostico-vendas")'
@@ -633,7 +479,7 @@ curl -s -H "X-OpenWebUI-User-Email: geral@company.com" \
 # Status: ✅ PASSOU
 ```
 
-### 📊 Resumo da Validação v2
+### 📊 Resumo da Validação
 
 | Teste | Descrição | Status | Resultado |
 |-------|-----------|--------|-----------|
@@ -646,29 +492,32 @@ curl -s -H "X-OpenWebUI-User-Email: geral@company.com" \
 
 ---
 
-## 10. Endpoints Completos (Referência Rápida)
+## 9. Referência Rápida
 
-### Agents UI (Novos em v2)
+### Endpoints de Agents (v2)
 
 ```bash
-# Listar agents do usuário (sidebar)
+# Listar agents do usuário
 GET /api/agents
 Headers: X-OpenWebUI-User-Email
+Response: { "success": true, "agents": [...] }
 
-# Detalhes do agent (página de detalhes)
+# Detalhes do agent com prompts
 GET /api/agents/{agent_id}
 Headers: X-OpenWebUI-User-Email
+Response: { "success": true, "agent": {..., "prompts": [...]} }
 ```
 
-### Modelos (Modificado em v2)
+### Endpoints de Modelos (v2)
 
 ```bash
 # Listar modelos tradicionais (SEM agents)
 GET /v1/models
 Headers: X-OpenWebUI-User-Email
+Response: { "data": [{"id": "gpt-4", ...}, {"id": "claude-sonnet", ...}] }
 ```
 
-### Chat (Inalterado)
+### Chat
 
 ```bash
 # Chat com agent (roteado para MCP Adapter)
@@ -680,87 +529,73 @@ POST /v1/chat/completions
 Body: { "model": "gpt-4", "messages": [...] }
 ```
 
-### MCP Adapter (Direto)
+### Acesso Direto ao MCP Adapter
 
 ```bash
 # Listar agents com prompts completos
 GET http://localhost:8001/agents?user_email=emingues@gmail.com
 
-# Chat com agent (direto, sem auth-middleware)
+# Chat com agent (sem passar pelo auth-middleware)
 POST http://localhost:8001/agents/{agent_key}/chat
 Body: { "user_email": "...", "message": "...", "history": [] }
 ```
 
 ---
 
-## 11. Migração v1 → v2
+## 10. Migração v1 → v2
 
-### O que precisa ser atualizado?
+### Mudanças Necessárias
 
-#### Frontend (Open WebUI)
+#### Para consumidores da API
 
 **ANTES (v1)**:
-```javascript
-// Buscar agents de /v1/models
-const response = await fetch('/v1/models');
-const data = response.json();
-const agents = data.data.filter(m => m.id.includes('agent'));
+```bash
+# Buscar agents de /v1/models (misturado com modelos)
+curl /v1/models | jq '.data[] | select(.id | contains("agent"))'
 ```
 
 **DEPOIS (v2)**:
-```javascript
-// Buscar agents de /api/agents
-const response = await fetch('/api/agents');
-const data = response.json();
-const agents = data.agents; // Já filtrado por permissões
+```bash
+# Buscar agents de /api/agents (endpoint dedicado)
+curl /api/agents | jq '.agents[]'
 ```
 
-#### Componentes
+#### Vantagens da v2
 
-**Adicionar**:
-- [AgentsSidebar.svelte](open-webui-custom/frontend/AgentsSidebar.svelte)
-- [AgentDetail.svelte](open-webui-custom/frontend/AgentDetail.svelte)
-
-**Modificar**:
-- Layout principal: incluir `<AgentsSidebar />` no menu lateral
-- Dropdown de modelos: usar `/v1/models` (que agora exclui agents)
+- ✅ **Separação clara**: Agents vs Modelos
+- ✅ **Prompts incluídos**: Retorna array de prompts de exemplo
+- ✅ **Informações adicionais**: `prompt_count`, `description` detalhada
+- ✅ **Permissões respeitadas**: Filtragem automática por usuário
 
 ---
 
-## 12. Conclusão
+## 11. Conclusão
 
 ### ✅ v2 Implementa
 
-1. **Separação de Conceitos**
-   - Agents → Sidebar dedicada
-   - Modelos → Dropdown tradicional
+1. **Novos Endpoints**
+   - `GET /api/agents` - Lista agents com informações resumidas
+   - `GET /api/agents/{id}` - Detalhes com prompts completos
 
-2. **Prompts Visíveis**
-   - 4 cards clicáveis por agent
-   - Onboarding facilitado
-   - Usuário não precisa decorar prompts
+2. **Modificação de Endpoints**
+   - `GET /v1/models` - Agora retorna APENAS modelos tradicionais
 
-3. **Permissões Respeitadas**
-   - `/api/agents` valida permissões do usuário
-   - Cada grupo vê apenas seus agents
-
-4. **Escalável**
-   - Novos agents aparecem automaticamente
-   - Prompts gerenciados no banco
-   - Sem hardcoding na UI
-
-### 📚 Documentação Completa
-
-- **Arquitetura**: [open-webui-custom/README.md](open-webui-custom/README.md)
-- **Implementação**: [open-webui-custom/IMPLEMENTATION_GUIDE.md](open-webui-custom/IMPLEMENTATION_GUIDE.md)
-- **Código fonte**: [/Users/macbookpro2017/git/lite-lmm/](.)
+3. **Benefícios**
+   - Separação clara entre agents e modelos
+   - Prompts de exemplo acessíveis via API
+   - Permissões validadas automaticamente
+   - Escalável (novos agents aparecem automaticamente)
 
 ### 🔗 Links Úteis
 
-- Open WebUI: http://localhost:8888
 - Auth Middleware: http://localhost:8000
 - MCP Adapter: http://localhost:8001
 - LiteLLM: http://localhost:4000
+
+### 📚 Documentação Adicional
+
+- **Implementação**: [open-webui-custom/IMPLEMENTATION_GUIDE.md](open-webui-custom/IMPLEMENTATION_GUIDE.md)
+- **Arquitetura**: [open-webui-custom/README.md](open-webui-custom/README.md)
 
 ---
 
