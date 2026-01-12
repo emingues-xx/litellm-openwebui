@@ -1,17 +1,17 @@
 model_list:
-  # OpenAI GPT-4 - For diagnostic agent
+  # Anthropic Claude 3 Haiku - Fast and efficient (WORKING)
+  - model_name: claude-3-haiku
+    litellm_params:
+      model: anthropic/claude-3-haiku-20240307
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # OpenAI GPT-4 - For diagnostic agent (NO CREDITS)
   - model_name: gpt-4
     litellm_params:
       model: gpt-4
       api_key: os.environ/OPENAI_API_KEY
 
-  # Anthropic Claude - Alternative model
-  - model_name: claude-sonnet
-    litellm_params:
-      model: anthropic/claude-sonnet-4-20250514
-      api_key: os.environ/ANTHROPIC_API_KEY
-
-  # Generic GPT-3.5 - For general users
+  # Generic GPT-3.5 - For general users (NO CREDITS)
   - model_name: gpt-3.5-turbo
     litellm_params:
       model: gpt-3.5-turbo

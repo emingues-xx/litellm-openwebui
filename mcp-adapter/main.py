@@ -33,6 +33,15 @@ app = FastAPI(
 )
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Create database tables on startup"""
+    from database import Base, engine
+    logger.info("Creating database tables...")
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created successfully")
+
+
 @app.get("/")
 async def root():
     """Health check"""
@@ -149,8 +158,8 @@ async def chat(
     ).first()
 
     if not agent:
-        logger.error(f"Agent not found: {agent_key}")
-        raise HTTPException(status_code=404, detail="Agent not found")
+        logger.error(f"Agent não encontrado: {agent_key}")
+        raise HTTPException(status_code=404, detail="Agente não encontrado")
 
     # 2. Busca usuário
     user = db.query(models.User).filter(
@@ -158,8 +167,8 @@ async def chat(
     ).first()
 
     if not user:
-        logger.error(f"User not found: {request.user_email}")
-        raise HTTPException(status_code=404, detail="User not found")
+        logger.error(f"Usuário não encontrado: {request.user_email}")
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
     # 3. Valida permissão
     has_access = db.query(models.GroupAgentPermission).join(
@@ -182,8 +191,8 @@ async def chat(
         db.add(audit_log)
         db.commit()
 
-        logger.warning(f"Access denied for user {request.user_email} to agent {agent_key}")
-        raise HTTPException(status_code=403, detail="Access denied to this agent")
+        logger.warning(f"Acesso negado para usuário {request.user_email} ao agente {agent_key}")
+        raise HTTPException(status_code=403, detail="Acesso negado a este agente")
 
     # 4. Registra acesso permitido
     audit_log = models.AuditLog(
@@ -195,7 +204,7 @@ async def chat(
     db.add(audit_log)
     db.commit()
 
-    # 5. Busca MCPs configurados para este agent
+    # 5. Busca MCPs configurados para este agent (ORQUESTRAÇÃO: Restaurando Enriquecimento)
     agent_mcps = db.query(models.AgentMcp).filter(
         models.AgentMcp.agent_id == agent.id
     ).all()
@@ -209,17 +218,23 @@ async def chat(
         if mcp:
             mcp_configs.append(mcp)
 
-    logger.info(f"Agent {agent_key} has {len(mcp_configs)} MCPs configured")
+    logger.info(f"Agent {agent_key} has {len(mcp_configs)} MCPs configured for enrichment")
 
-    # 6. Identifica quais MCPs chamar
+    # 6. Identifica quais MCPs chamar (baseado na pergunta)
     mcps_to_call = identify_needed_mcps(request.message, mcp_configs)
+    
+    # Se não identificou nada específico mas é o agent de vendas, força os MCPs de dados
+    if not mcps_to_call and agent_key == "diagnostico-vendas":
+        mcps_to_call = mcp_configs
+
     logger.info(f"Will call {len(mcps_to_call)} MCPs: {[m.name for m in mcps_to_call]}")
 
-    # 7. Chama MCPs
+    # 7. Chama MCPs e coleta resultados
     mcp_client = MCPClient()
     mcp_results = {}
 
     for mcp_config in mcps_to_call:
+        # Tenta mapear ferramenta. Se falhar, usa uma padrão por tipo
         tool_name = get_tool_for_mcp(mcp_config.type, request.message)
         tool_args = get_args_for_tool(request.message)
 
@@ -237,21 +252,22 @@ async def chat(
 
     # 8. Formata contexto enriquecido
     context = format_mcp_results(mcp_results)
-    logger.info(f"MCP context length: {len(context)} characters")
-
+    
     # 9. Monta mensagem enriquecida
     if mcp_results:
         enriched_message = f"""{request.message}
 
 ---
-DADOS DISPONÍVEIS PARA ANÁLISE:
+DADOS DISPONÍVEIS PARA ANÁLISE (MOCK):
 
 {context}
 ---
 
-Por favor, analise estes dados e forneça insights acionáveis."""
+Por favor, analise estes dados e forneça insights acionáveis conforme seu system prompt."""
     else:
         enriched_message = request.message
+
+    logger.info(f"[ROUTER] Forwarding enriched request to LiteLLM for agent {agent_key} (Model: {agent.llm_model})")
 
     # 10. Prepara mensagens para LLM
     messages = [
@@ -261,14 +277,15 @@ Por favor, analise estes dados e forneça insights acionáveis."""
         }
     ]
 
-    # Adiciona histórico
-    for msg in request.history:
-        messages.append({
-            "role": msg.role,
-            "content": msg.content
-        })
+    # Adiciona histórico se existir
+    if request.history:
+        for msg in request.history:
+            messages.append({
+                "role": msg.role,
+                "content": msg.content
+            })
 
-    # Adiciona mensagem atual
+    # Adiciona a mensagem enriquecida do usuário
     messages.append({
         "role": "user",
         "content": enriched_message
@@ -296,7 +313,10 @@ Por favor, analise estes dados e forneça insights acionáveis."""
                     if response.status_code != 200:
                         error_text = await response.aread()
                         logger.error(f"LiteLLM error: {response.status_code} - {error_text}")
-                        yield f"data: Error calling LLM: {response.status_code}\n\n"
+                        
+                        friendly_error = "O provedor de IA está sobrecarregado no momento. Por favor, tente novamente em instantes." if response.status_code == 503 else f"Erro ao chamar o modelo: {response.status_code}"
+                        
+                        yield f"data: {{\"choices\": [ {{\"delta\": {{\"content\": \"\\n\\n⚠️ **{friendly_error}**\"}}, \"index\": 0, \"finish_reason\": \"error\" }} ] }}\n\n"
                         yield "data: [DONE]\n\n"
                         return
 
@@ -306,7 +326,7 @@ Por favor, analise estes dados e forneça insights acionáveis."""
 
         except Exception as e:
             logger.error(f"Error in generate: {e}")
-            yield f"data: Error: {str(e)}\n\n"
+            yield f"data: {{\"choices\": [ {{\"delta\": {{\"content\": \"\\n\\n❌ **Erro Inesperado:** {str(e)}\"}}, \"index\": 0 }} ] }}\n\n"
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(

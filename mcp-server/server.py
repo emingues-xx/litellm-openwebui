@@ -133,11 +133,45 @@ def search_knowledge_base(params: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def get_sales_data(params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Simula consulta ao banco de dados de vendas
+    """
+    period = params.get("period", "30d")
+    group_by = params.get("group_by", "category")
+
+    return {
+        "period": period,
+        "group_by": group_by,
+        "total_revenue": 154200.50,
+        "total_orders": 845,
+        "top_products": [
+            {"id": 101, "name": "Smartphone XYZ", "category": "Eletrônicos", "sales": 154, "revenue": 46200},
+            {"id": 204, "name": "Fone de Ouvido Bluetooth", "category": "Acessórios", "sales": 320, "revenue": 16000},
+            {"id": 305, "name": "Camiseta Algodão Premium", "category": "Vestuário", "sales": 210, "revenue": 10500},
+            {"id": 108, "name": "Monitor UltraWide 34", "category": "Eletrônicos", "sales": 45, "revenue": 67500}
+        ],
+        "category_breakdown": [
+            {"category": "Eletrônicos", "share": 0.55},
+            {"category": "Acessórios", "share": 0.25},
+            {"category": "Vestuário", "share": 0.20}
+        ]
+    }
+
+
 # Tool registry
 TOOLS = {
+    # Nomes genéricos
     "get_analytics": get_analytics_data,
     "get_monitoring": get_monitoring_data,
     "search_knowledge": search_knowledge_base,
+    
+    # Nomes específicos esperados pelo mcp-adapter
+    "analytics_get_conversion": lambda p: get_analytics_data({"metric": "conversion_rate"}),
+    "analytics_get_traffic": lambda p: get_analytics_data({"metric": "conversion_rate"}), # simula tráfego similar
+    "monitoring_get_latency": lambda p: get_monitoring_data({"metric": "api_latency"}),
+    "monitoring_get_errors": lambda p: get_monitoring_data({"metric": "checkout_errors"}),
+    "db_query_sales": get_sales_data
 }
 
 
@@ -180,25 +214,19 @@ async def list_tools():
     return {
         "tools": [
             {
-                "name": "get_analytics",
-                "description": "Get analytics data (cart abandonment, conversion, etc)",
-                "params": {
-                    "metric": "string (cart_abandonment, conversion_rate)"
-                }
+                "name": "analytics_get_conversion",
+                "description": "Obtém taxas de conversão e funis",
+                "params": {"metric": "conversion_rate"}
             },
             {
-                "name": "get_monitoring",
-                "description": "Get monitoring data (errors, latency, etc)",
-                "params": {
-                    "metric": "string (checkout_errors, api_latency)"
-                }
+                "name": "monitoring_get_latency",
+                "description": "Monitora latência de APIs e banco",
+                "params": {"metric": "api_latency"}
             },
             {
-                "name": "search_knowledge",
-                "description": "Search internal knowledge base",
-                "params": {
-                    "query": "string"
-                }
+                "name": "db_query_sales",
+                "description": "Consulta dados históricos de vendas no Postgres",
+                "params": {"period": "30d", "group_by": "category"}
             }
         ]
     }

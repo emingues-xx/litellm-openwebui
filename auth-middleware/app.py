@@ -5,11 +5,21 @@ Intercepta requisições do Open WebUI e injeta Virtual Keys baseado no grupo do
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import os
 from typing import Dict, Optional
 
 app = FastAPI()
+
+# Enable CORS for Open WebUI frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8888", "http://127.0.0.1:8888"],  # Open WebUI URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Configuração
 LITELLM_URL = os.getenv("LITELLM_URL", "http://litellm:4000")
@@ -79,19 +89,24 @@ def get_virtual_key(group: str) -> str:
     return GROUP_KEYS[group]
 
 
-@app.get("/api/agents")
+@app.api_route("/v1/api/agents", methods=["GET", "OPTIONS"])
+@app.api_route("/api/agents", methods=["GET", "OPTIONS"])
 async def get_agents(request: Request):
     """
     API endpoint para UI customizada buscar agents
     Retorna apenas agents (não modelos tradicionais)
     """
+    # Handle OPTIONS preflight request
+    if request.method == "OPTIONS":
+        return {}
+
     print(f"[API] Fetching agents for custom UI")
 
     # Identificar usuário
     user = get_user_from_request(request)
 
     if not user or not user.get("email"):
-        return {"success": False, "agents": [], "error": "User not authenticated"}
+        return {"success": False, "agents": [], "error": "Usuário não autenticado"}
 
     user_email = user["email"]
 
@@ -121,26 +136,31 @@ async def get_agents(request: Request):
 
                 return {"success": True, "agents": agents_ui}
             else:
-                return {"success": False, "agents": [], "error": "Failed to fetch agents"}
+                return {"success": False, "agents": [], "error": "Falha ao buscar agentes"}
 
     except Exception as e:
         print(f"[API] Error fetching agents: {e}")
         return {"success": False, "agents": [], "error": str(e)}
 
 
-@app.get("/api/agents/{agent_id}")
+@app.api_route("/v1/api/agents/{agent_id}", methods=["GET", "OPTIONS"])
+@app.api_route("/api/agents/{agent_id}", methods=["GET", "OPTIONS"])
 async def get_agent_detail(agent_id: str, request: Request):
     """
     API endpoint para buscar detalhes de um agent específico
     Retorna agent com todos os prompts
     """
+    # Handle OPTIONS preflight request
+    if request.method == "OPTIONS":
+        return {}
+
     print(f"[API] Fetching agent details: {agent_id}")
 
     # Identificar usuário
     user = get_user_from_request(request)
 
     if not user or not user.get("email"):
-        return {"success": False, "agent": None, "error": "User not authenticated"}
+        return {"success": False, "agent": None, "error": "Usuário não autenticado"}
 
     user_email = user["email"]
 
@@ -158,7 +178,7 @@ async def get_agent_detail(agent_id: str, request: Request):
                 agent = next((a for a in agents if a["id"] == agent_id), None)
 
                 if not agent:
-                    return {"success": False, "agent": None, "error": "Agent not found"}
+                    return {"success": False, "agent": None, "error": "Agente não encontrado"}
 
                 return {
                     "success": True,
@@ -172,7 +192,7 @@ async def get_agent_detail(agent_id: str, request: Request):
                     }
                 }
             else:
-                return {"success": False, "agent": None, "error": "Failed to fetch agent"}
+                return {"success": False, "agent": None, "error": "Falha ao buscar detalhes do agente"}
 
     except Exception as e:
         print(f"[API] Error fetching agent details: {e}")
@@ -182,19 +202,18 @@ async def get_agent_detail(agent_id: str, request: Request):
 @app.get("/v1/models")
 async def get_models(request: Request):
     """
-    Retorna APENAS modelos tradicionais do LiteLLM (NÃO agents)
-
-    Agents têm UI dedicada (sidebar + detail page) e são buscados via /api/agents
+    Retorna modelos tradicionais do LiteLLM E agents customizados
     """
-    print(f"[MODELS] Fetching traditional models (no agents)")
+    print(f"[MODELS] Fetching models and agents")
 
     # 1. Identificar usuário
     user = get_user_from_request(request)
+    user_email = user.get("email") if user else None
     group = get_user_group(user)
 
     all_models = []
 
-    # 2. Buscar APENAS modelos tradicionais do LiteLLM (sem agents)
+    # 2. Buscar modelos tradicionais do LiteLLM
     try:
         virtual_key = get_virtual_key(group)
 
@@ -208,14 +227,35 @@ async def get_models(request: Request):
                 litellm_response = response.json()
                 litellm_models = litellm_response.get("data", [])
                 print(f"[MODELS] Fetched {len(litellm_models)} traditional models from LiteLLM")
-
-                # Adicionar apenas modelos tradicionais
                 all_models.extend(litellm_models)
 
     except Exception as e:
         print(f"[MODELS] Error fetching LiteLLM models: {e}")
 
-    # NÃO incluir agents aqui - eles são buscados via /api/agents
+    # 3. Buscar agents customizados do MCP Adapter
+    if user_email:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    "http://mcp-adapter:8001/agents",
+                    params={"user_email": user_email}
+                )
+
+                if response.status_code == 200:
+                    agents = response.json()
+                    print(f"[MODELS] Fetched {len(agents)} agents for {user_email}")
+
+                    for agent in agents:
+                        all_models.append({
+                            "id": agent["id"],
+                            "object": "model",
+                            "created": int(1686935002),
+                            "owned_by": "custom-agent",
+                            "name": agent["name"]
+                        })
+        except Exception as e:
+            print(f"[MODELS] Error fetching agents: {e}")
+
     return {"data": all_models, "object": "list"}
 
 
@@ -239,8 +279,23 @@ async def proxy(request: Request, path: str):
             body = json.loads(body_bytes)
             model_id = body.get("model", "")
 
-            # Verificar se é um agent (diagnostico-vendas, agent-generico, etc)
-            if model_id in ["diagnostico-vendas", "agent-generico"]:
+            # Verificar se é um agent - consulta dinâmica no mcp-adapter
+            is_agent = False
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    agents_response = await client.get(
+                        "http://mcp-adapter:8001/agents",
+                        params={"user_email": user_email or "unknown@empresa.com"}
+                    )
+                    if agents_response.status_code == 200:
+                        agents = agents_response.json()
+                        is_agent = any(agent["id"] == model_id for agent in agents)
+            except Exception as e:
+                print(f"[ROUTER] Error checking if {model_id} is an agent: {e}")
+                # Se houver erro ao verificar, assume que não é agent e continua para LiteLLM
+                is_agent = False
+
+            if is_agent:
                 print(f"[ROUTER] Routing to MCP Adapter for agent: {model_id}")
 
                 # Rotear para MCP Adapter

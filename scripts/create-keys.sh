@@ -9,13 +9,13 @@ echo "==================================================================="
 echo ""
 
 # 1. Chave para grupo VENDAS
-# Acesso a: gpt-4, claude-sonnet (modelos premium)
+# Acesso a: gpt-4, claude-3-haiku (modelos premium)
 echo "1. Criando chave para grupo VENDAS..."
 VENDAS_RESPONSE=$(curl -s -X POST "${LITELLM_URL}/key/generate" \
   -H "Authorization: Bearer ${MASTER_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "models": ["gpt-4", "claude-sonnet"],
+    "models": ["gpt-4", "claude-3-haiku"],
     "duration": null,
     "key_alias": "vendas-team",
     "team_id": "vendas",
@@ -30,13 +30,13 @@ echo "   ✅ Chave criada: ${VENDAS_KEY:0:20}..."
 echo ""
 
 # 2. Chave para grupo GERAL
-# Acesso a: gpt-3.5-turbo (modelo básico)
+# Acesso a: gpt-3.5-turbo, claude-3-haiku (modelos básicos)
 echo "2. Criando chave para grupo GERAL..."
 GERAL_RESPONSE=$(curl -s -X POST "${LITELLM_URL}/key/generate" \
   -H "Authorization: Bearer ${MASTER_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "models": ["gpt-3.5-turbo"],
+    "models": ["gpt-3.5-turbo", "claude-3-haiku"],
     "duration": null,
     "key_alias": "geral-team",
     "team_id": "geral",
