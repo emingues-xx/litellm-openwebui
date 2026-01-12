@@ -2,23 +2,58 @@
 
 Este documento descreve o fluxo de comunicação, as responsabilidades de cada componente e o passo a passo para disponibilizar novos agents para grupos específicos.
 
-## 📊 Diagrama de Fluxo
+## 📊 Arquitetura do Sistema
+
+```mermaid
+graph LR
+    U[Usuário] -- HTTPS --> W[Open WebUI]
+    W -- API + User Email --> AM[Auth Middleware]
+    
+    subgraph "Hub de Agentes (Governança)"
+        AM -- Route: /agents --> AD[MCP Adapter]
+        AD -- Auth/Audit --> DB[(Postgres API)]
+        AD -- Orquestração --> MS[MCP Server]
+    end
+    
+    subgraph "Camada de Inteligência"
+        AM -- Route: /chat --> L[LiteLLM Proxy]
+        AD -- Prompt Enriquecido --> L
+        L -- Normalização --> AW[Agent Worker / LLM]
+    end
+```
+
+## 🔄 Diagrama de Sequência (Golden Path)
 
 ```mermaid
 sequenceDiagram
-    participant U as Usuário (Browser)
+    participant U as Usuário
     participant W as Open WebUI
-    Note over AD: Governança, Orquestração & Auditoria
-    AD->>AD: Valida Permissão & Registra Log
-    
-    Note over AD, MS: Busca de Dados (Opcional)
-    AD->>MS: Chama Ferramentas/Dados via MCP
-    MS-->>AD: Retorna Dados (Mock/Reais)
+    participant AM as Auth Middleware
+    participant AD as MCP Adapter
+    participant MS as MCP Server
+    participant L as LiteLLM Proxy
+    participant AW as Agent Worker
 
-    Note over AD, L: Enriquecimento do Prompt
-    AD->>L: Encaminha Requisição Enriquecida (Padrão OpenAI)
-    L->>AG: Roteia para o Worker Específico (ex: Claude)
-    AG-->>U: Resposta via Stream (volta pelo mesmo caminho)
+    U->>W: Envia Mensagem
+    W->>AM: POST /v1/chat/completions (header: user-email)
+    
+    AM->>AD: Identifica Agente & Governança
+    AD->>AD: Valida Permissão (Postgres)
+    
+    opt Busca de Contexto (MCP)
+        AD->>MS: Executa Tool (ex: db_query_sales)
+        MS-->>AD: Retorna Dados Brutos
+    end
+    
+    AD->>AD: Injeta Contexto no Prompt
+    
+    AD->>L: Roteia para o Modelo do Agente
+    L->>AW: Chamada Final ao LLM (OpenAI/Claude/Custom)
+    AW-->>L: Resposta (Stream)
+    L-->>AD: Proxy Stream
+    AD-->>AM: Proxy Stream
+    AM-->>W: Proxy Stream
+    W-->>U: Exibe Resposta
 ```
 
 ---
