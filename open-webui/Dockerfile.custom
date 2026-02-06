@@ -1,0 +1,23 @@
+# Stage 1: Build frontend
+FROM node:22-alpine3.20 AS build
+WORKDIR /app
+
+# Set Node.js options to avoid heap limit Allocation failed
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
+# Copy package files and install dependencies
+COPY package.json package-lock.json ./
+RUN npm ci --force
+
+# Copy all source and build
+COPY . .
+RUN npm run build
+
+# Stage 2: Final image
+FROM ghcr.io/open-webui/open-webui:v0.7.2
+
+# Replace the built frontend with our custom build
+COPY --from=build /app/build /app/build
+
+WORKDIR /app/backend
+CMD ["bash", "start.sh"]
