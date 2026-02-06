@@ -161,6 +161,18 @@ services:
     networks:
       - litellm-network
 
+  # Ollama - Local LLM Runtime
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - litellm-network
+
   # Open WebUI - ChatGPT-like Interface (Custom with Agents)
   open-webui:
     build:
@@ -173,10 +185,14 @@ services:
         condition: service_started
       mcp-adapter:
         condition: service_started
+      ollama:
+        condition: service_started
     environment:
       # Connect to auth-middleware
       - OPENAI_API_BASE_URL=http://auth-middleware:8000/v1
       - OPENAI_API_KEY=dummy
+      # Connect to Ollama
+      - OLLAMA_BASE_URL=http://ollama:11434
       - WEBUI_AUTH=true
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-your-secret-key-change-this}
       # Forward user info headers to middleware
@@ -194,6 +210,7 @@ volumes:
   postgres_data:
   langfuse_data:
   open_webui_data:
+  ollama_data:
 
 networks:
   litellm-network:

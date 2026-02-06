@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  litellm-db:
+    image: postgres:15-alpine
+    container_name: litellm-db
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm_password
+    volumes:
+      - litellm-db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - openwebui-network
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm
+    ports:
+      - "4000:4000"
+    environment:
+      # Database
+      - DATABASE_URL=postgresql://litellm:litellm_password@litellm-db:5432/litellm
+
+      # Master Key (para administração)
+      - LITELLM_MASTER_KEY=sk-1234-change-this-master-key
+
+      # API Keys dos providers
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+
+      # Configurações
+      - LITELLM_MODE=PRODUCTION
+      - UI_USERNAME=admin
+      - UI_PASSWORD=admin_password
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+    command: --config /app/config.yaml --detailed_debug
+    depends_on:
+      - litellm-db
+    restart: unless-stopped
+    networks:
+      - openwebui-network
+
+  # Ollama - Local LLM Runtime
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - openwebui-network
+
+  # Open WebUI - ChatGPT-like Interface
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    ports:
+      - "3000:8080"
+    volumes:
+      - open_webui_data:/app/backend/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-change-this-secret-key-to-something-random}
+    networks:
+      - openwebui-network
+
+volumes:
+  litellm-db-data:
+  ollama_data:
+  open_webui_data:
+
+
+networks:
+  openwebui-network:
+    driver: bridge

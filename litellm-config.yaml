@@ -1,0 +1,65 @@
+model_list:
+  # OpenAI Models
+  - model_name: gpt-4-turbo
+    litellm_params:
+      model: gpt-4-turbo-preview
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4
+    litellm_params:
+      model: gpt-4
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: gpt-3.5-turbo
+      api_key: os.environ/OPENAI_API_KEY
+
+  # Anthropic Models
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20240620
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: claude-3-opus
+    litellm_params:
+      model: anthropic/claude-3-opus-20240229
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # Local Models (Ollama)
+  - model_name: llama3
+    litellm_params:
+      model: ollama/llama3
+      api_base: http://ollama:11434
+
+  - model_name: mistral
+    litellm_params:
+      model: ollama/mistral
+      api_base: http://ollama:11434
+
+# Configurações gerais
+general_settings:
+  # Master key (mesma do environment)
+  master_key: sk-1234-change-this-master-key
+
+  # Database
+  database_url: postgresql://litellm:litellm_password@litellm-db:5432/litellm
+
+  # Logging
+  success_callback: ["langfuse", "postgres"]
+  failure_callback: ["langfuse", "postgres"]
+
+  # Cache (opcional, melhora performance)
+  cache: true
+  cache_params:
+    type: redis
+    host: redis
+    port: 6379
+
+# Rate Limiting (padrão para todas as chaves)
+litellm_settings:
+  max_parallel_requests: 100
+  global_max_parallel_requests: 1000
+
+  # Timeout
+  request_timeout: 600
